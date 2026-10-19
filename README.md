@@ -1,9 +1,9 @@
- ███████╗██╗   ██╗██████╗ ██████╗ ██╗     ██╗████████╗███████╗
- ██╔════╝██║   ██║██╔══██╗██╔══██╗██║     ██║╚══██╔══╝╚══███╔╝
- ███████╗██║   ██║██████╔╝██████╔╝██║     ██║   ██║     ███╔╝ 
- ╚════██║██║   ██║██╔══██╗██╔══██╗██║     ██║   ██║    ███╔╝  
- ███████║╚██████╔╝██████╔╝██████╔╝███████╗██║   ██║   ███████╗ 
- ╚══════╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝   ╚═╝   ╚══════╝                  
+              ███████╗██╗   ██╗██████╗ ██████╗ ██╗     ██╗████████╗███████╗
+              ██╔════╝██║   ██║██╔══██╗██╔══██╗██║     ██║╚══██╔══╝╚══███╔╝
+              ███████╗██║   ██║██████╔╝██████╔╝██║     ██║   ██║     ███╔╝ 
+              ╚════██║██║   ██║██╔══██╗██╔══██╗██║     ██║   ██║    ███╔╝  
+              ███████║╚██████╔╝██████╔╝██████╔╝███████╗██║   ██║   ███████╗ 
+              ╚══════╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝   ╚═╝   ╚══════╝                  
 ────  Fast multi-source subdomain enumeration for Python 3 ────
 # Version 1.0
 `subBlitz` is a modern subdomain enumeration tool written in Python 3. It combines passive enumeration across multiple public data sources with optional DNS bruteforce and TCP port scanning. Results are aggregated, deduplicated, and presented through a clean terminal interface.
