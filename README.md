@@ -142,16 +142,16 @@ Place `names.txt` in the same directory (or `subBlitz/names.txt`) with one candi
 &nbsp; Total subdomains 14  
   Engines used 7
 
-&nbsp; Contributions  
+ Contributions  
   ┌──────────────┬───────┐  
-  │ Engine │ Found │  
+  │ Engine       │ Found │  
   ├──────────────┼───────┤  
-  │ crt.sh │ 9 │  
-  │ HackerTarget │ 4 │  
-  │ RapidDNS │ 3 │  
+  │ crt.sh       │   9   │  
+  │ HackerTarget │   4   │  
+  │ RapidDNS     │   3   │  
   └──────────────┴───────┘
 
-&nbsp; Finished in 6.42s  
+ Finished in 6.42s  
 ```
 ---
 
