@@ -1,0 +1,4 @@
+requests>=2.31.0
+dnspython>=2.4.0
+rich>=13.7.0
+colorama>=0.4.6
