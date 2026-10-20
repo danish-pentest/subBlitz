@@ -381,7 +381,7 @@ def get_engines(selected: Optional[Iterable[str]] = None) -> list[type[Engine]]:
     - selected=None or empty  -> all keyless engines
     - selected=["all"]        -> every registered engine (incl. keyed)
     - selected=["working"]    -> same as default
-    - selected=[...]          -> specific engines by name
+    - selected=[...]          -> specific engines by name.
     """
     if not selected:
         return [ALL_ENGINES[k] for k in WORKING_KEYLESS]
