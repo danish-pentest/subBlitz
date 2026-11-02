@@ -209,6 +209,42 @@ class AnubisEngine(Engine):
         return self.subdomains
 
 
+class CrtnameEngine(Engine):
+    name = "crt.name"
+    BASE = "https://crt.name/v1/search?apex={domain}"
+    MAX_RESULTS = 10000
+
+    def enumerate(self) -> list[str]:
+        text = self._get(self.BASE.format(domain=self.domain))
+        if not text:
+            return self.subdomains
+        for line in text.splitlines()[: self.MAX_RESULTS]:
+            self._add(line.strip())
+        return self.subdomains
+
+
+class ScanMalwareEngine(Engine):
+    name = "ScanMalware"
+    BASE = "https://scanmalware.com/api/v1/ct/dns/{domain}?subdomain_limit=5000"
+
+    def enumerate(self) -> list[str]:
+        data = self._get_json(self.BASE.format(domain=self.domain))
+        if not data:
+            return self.subdomains
+
+        # The API returns a JSON object containing a subdomains array
+        subs = data.get("subdomains", [])
+        if not isinstance(subs, list):
+            self._log("unexpected JSON shape (missing 'subdomains' list)")
+            return self.subdomains
+
+        for sub in subs:
+            if isinstance(sub, str):
+                self._add(sub)
+
+        return self.subdomains
+
+
 class DomaineeEngine(Engine):
     name = "Domainee"
     BASE = "https://api.domainee.dev/v1/tools/subdomain-finder?domain={domain}"
@@ -248,6 +284,318 @@ class CrtShEngine(Engine):
             self._log(f"attempt {attempt + 1}: no valid response")
             time.sleep(3)
         return self.subdomains
+
+class SubdomainCenterEngine(Engine):
+    name = "SubdomainCenter"
+    BASE = "https://api.subdomain.center/?domain={domain}"
+
+    def enumerate(self) -> list[str]:
+        data = self._get_json(self.BASE.format(domain=self.domain))
+        if not data:
+            return self.subdomains
+
+        # API returns a plain JSON array of subdomain strings
+        if not isinstance(data, list):
+            self._log("unexpected response shape (expected a list)")
+            return self.subdomains
+
+        for sub in data:
+            if isinstance(sub, str):
+                self._add(sub)
+
+        return self.subdomains
+
+
+class THCEngine(Engine):
+    name = "THC"
+    BASE = "https://ip.thc.org/sb/{domain}"
+
+    def enumerate(self) -> list[str]:
+        text = self._get(self.BASE.format(domain=self.domain))
+        if not text:
+            return self.subdomains
+
+        # Strip ANSI color codes
+        ansi = re.compile(r'\x1b\[[0-9;]*m')
+        clean = ansi.sub('', text)
+
+        for line in clean.splitlines():
+            line = line.strip()
+            # Skip comments, empty lines, and metadata lines
+            if not line or line.startswith(";;"):
+                continue
+            # Skip the bare domain itself (handled by _add)
+            self._add(line)
+
+        return self.subdomains
+
+        # The API returns one JSON object per line (JSONL)
+        import json as _json
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = _json.loads(line)
+            except _json.JSONDecodeError:
+                continue
+
+            url = record.get("url")
+            if not url:
+                continue
+
+            # Extract the hostname and add it
+            import urllib.parse as _urlparse
+            host = _urlparse.urlparse(url).hostname
+            if host:
+                self._add(host)
+
+        return self.subdomains
+
+
+
+
+
+
+class BlitzCrawlerEngine(Engine):
+    name = "BlitzCrawler"
+
+    MAX_PAGES = 150
+    MAX_BYTES = 30_000_000
+    MAX_DEPTH = 6
+
+    def enumerate(self) -> list[str]:
+        from collections import deque
+        from html.parser import HTMLParser
+
+        class LinkParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+
+            def handle_starttag(self, tag, attrs):
+                for attr, value in attrs:
+                    if not value:
+                        continue
+
+                    if attr.lower() in (
+                        "href", "src", "action", "data", "poster"
+                    ):
+                        self.links.append(value.strip())
+
+                    elif attr.lower() == "srcset":
+                        for item in value.split(","):
+                            parts = item.strip().split()
+                            if parts:
+                                self.links.append(parts[0])
+
+        headers = {
+            "User-Agent": "curl/8.5.0",
+            "Accept": (
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        # Absolute URLs, protocol-relative URLs, and hostname references.
+        url_pattern = re.compile(
+            r"""(?ix)
+            (?:
+                https?://
+                |
+                //
+            )
+            ([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)
+            |
+            \b
+            (
+                (?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+
+                [a-z]{2,63}
+            )
+            \b
+            """
+        )
+
+        def extract_hosts(text, base_url):
+            parser = LinkParser()
+
+            try:
+                parser.feed(text)
+            except Exception:
+                pass
+
+            candidates = list(parser.links)
+
+            for match in url_pattern.finditer(text):
+                candidate = match.group(1) or match.group(2)
+                if candidate:
+                    candidates.append(candidate)
+
+            hosts = set()
+
+            for candidate in candidates:
+                candidate = candidate.strip().strip("\"'<>(),;")
+
+                if not candidate or candidate.startswith(
+                    ("data:", "javascript:", "mailto:", "tel:", "#")
+                ):
+                    continue
+
+                try:
+                    if candidate.startswith("//"):
+                        parsed = urlparse.urlparse("https:" + candidate)
+                    elif "://" in candidate:
+                        parsed = urlparse.urlparse(candidate)
+                    elif "/" in candidate or "?" in candidate or "#" in candidate:
+                        parsed = urlparse.urlparse(
+                            urlparse.urljoin(base_url, candidate)
+                        )
+                    else:
+                        parsed = urlparse.urlparse("//" + candidate)
+
+                    host = (parsed.hostname or "").lower().rstrip(".")
+
+                    if host and re.fullmatch(r"[a-z0-9.-]+", host):
+                        if ".." not in host:
+                            hosts.add(host)
+
+                except (ValueError, TypeError):
+                    continue
+
+            return hosts
+
+        queue = deque([(f"https://{self.domain}/", 0)])
+        visited = set()
+
+        while queue and len(visited) < self.MAX_PAGES:
+            url, depth = queue.popleft()
+
+            parsed_url = urlparse.urlparse(url)
+            url = urlparse.urlunparse(
+                parsed_url._replace(fragment="")
+            )
+
+            if url in visited:
+                continue
+
+            visited.add(url)
+
+            try:
+                with self.session.get(
+                    url,
+                    headers=headers,
+                    timeout=self.timeout,
+                    allow_redirects=True,
+                    stream=True,
+                ) as response:
+                    self._log(
+                        f"HTTP {response.status_code}: {response.url}"
+                    )
+
+                    if response.status_code >= 400:
+                        continue
+
+                    content_type = (
+                        response.headers.get("Content-Type") or ""
+                    ).lower()
+
+                    if content_type and not any(
+                        kind in content_type
+                        for kind in ("html", "text", "javascript", "json")
+                    ):
+                        continue
+
+                    chunks = []
+                    total = 0
+
+                    for chunk in response.iter_content(8192):
+                        if not chunk:
+                            continue
+
+                        remaining = self.MAX_BYTES - total
+
+                        if remaining <= 0:
+                            break
+
+                        if len(chunk) > remaining:
+                            chunks.append(chunk[:remaining])
+                            total += remaining
+                            break
+
+                        chunks.append(chunk)
+                        total += len(chunk)
+
+                    text = b"".join(chunks).decode(
+                        response.encoding or "utf-8",
+                        errors="replace",
+                    )
+
+                    final_url = response.url
+
+            except requests.exceptions.RequestException as exc:
+                self._log(
+                    f"request failed: {type(exc).__name__}: {exc}"
+                )
+                continue
+
+            hosts = extract_hosts(text, final_url)
+
+            for host in sorted(hosts):
+                self._add(host)
+
+            self._log(
+                f"page {len(visited)}: found "
+                f"{len(hosts)} candidate hosts"
+            )
+
+            if depth >= self.MAX_DEPTH:
+                continue
+
+            parser = LinkParser()
+
+            try:
+                parser.feed(text)
+            except Exception:
+                continue
+
+            for link in parser.links:
+                absolute = urlparse.urljoin(final_url, link)
+                parsed = urlparse.urlparse(absolute)
+
+                if parsed.scheme not in ("http", "https"):
+                    continue
+
+                host = (parsed.hostname or "").lower().rstrip(".")
+
+                if not (
+                    host == self.domain
+                    or host.endswith("." + self.domain)
+                ):
+                    continue
+
+                if parsed.path.lower().endswith((
+                    ".jpg", ".jpeg", ".png", ".gif", ".svg",
+                    ".webp", ".ico", ".pdf", ".zip", ".gz",
+                    ".mp4", ".mp3", ".woff", ".woff2",
+                    ".ttf", ".css", ".map",
+                )):
+                    continue
+
+                next_url = urlparse.urlunparse(
+                    parsed._replace(fragment="")
+                )
+
+                if next_url not in visited:
+                    queue.append((next_url, depth + 1))
+
+        self._log(f"pages visited: {len(visited)}")
+        self._log(f"total subdomains: {len(self.subdomains)}")
+
+        return self.subdomains
+
+
+
 
 
 # ── KEYED ENGINES ───────────────────────────────────────────
@@ -349,17 +697,21 @@ class ChaosEngine(Engine):
 # ── Registry ─────────────────────────────────────────────────
 ALL_ENGINES: dict[str, type[Engine]] = {
     # ── Working keyless (default) ──
-    "hackertarget": HackerTargetEngine,
-    "rapiddns":     RapidDNSEngine,
-    "certspotter":  CertSpotterEngine,
-    "urlscan":      URLScanEngine,
-    "anubis":       AnubisEngine,
-    "domainee":     DomaineeEngine,
-    "crt":          CrtShEngine,
-
+    "hackertarget":     HackerTargetEngine,
+    "rapiddns":         RapidDNSEngine,
+    "certspotter":      CertSpotterEngine,
+    "urlscan":          URLScanEngine,
+    "anubis":           AnubisEngine,
+    "domainee":         DomaineeEngine,
+    "crt":              CrtShEngine,
+    "crtname":          CrtnameEngine,
+    "scanmalware":      ScanMalwareEngine,
+    "subdomaincenter":  SubdomainCenterEngine,
+    "thc":              THCEngine,
+    "blitzcrawler":     BlitzCrawlerEngine,
     # ── Keyed (optional) ──
-    "virustotal":   VirusTotalEngine,
-    "chaos":        ChaosEngine,
+    "virustotal":       VirusTotalEngine,
+    "chaos":            ChaosEngine,
 }
 
 # Default set — all keyless engines
@@ -371,6 +723,12 @@ WORKING_KEYLESS = [
     "anubis",
     "domainee",
     "crt",
+    "crtname",
+    "scanmalware",
+    "subdomaincenter",
+    "thc",
+    "blitzcrawler",
+
 ]
 
 
@@ -381,7 +739,7 @@ def get_engines(selected: Optional[Iterable[str]] = None) -> list[type[Engine]]:
     - selected=None or empty  -> all keyless engines
     - selected=["all"]        -> every registered engine (incl. keyed)
     - selected=["working"]    -> same as default
-    - selected=[...]          -> specific engines by name.
+    - selected=[...]          -> specific engines by name
     """
     if not selected:
         return [ALL_ENGINES[k] for k in WORKING_KEYLESS]
