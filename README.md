@@ -11,7 +11,8 @@
 ---  
 # Feature 
 - Passive enumeration across multiple free, keyless data sources  
-- Wildcard DNS detection to reduce false positives  
+- Wildcard DNS detection to reduce false positives
+- **Active web crawler** (`blitzcrawler`) that discovers subdomains from HTML, JS, and JSON
 - Threaded DNS bruteforce with a built-in wordlist  
 - Optional TCP port scan on all discovered hosts  
 - Export results to a plain-text file  
@@ -50,7 +51,20 @@ export PDCP_API_KEY="your_chaos_key"
 export CHAOS_KEY="your_chaos_key"  
 ```
 
+## BlitzCrawler — Active Same-Origin Crawler
 
+subBlitz's only **active** engine. Crawls `https://{domain}/` and extracts
+hostnames from HTML attributes (`href`, `src`, `action`, `srcset`), raw URLs,
+and bare FQDNs inside JS/JSON — catching subdomains that never hit CT logs.
+
+**Limits:** `MAX_PAGES=150` · `MAX_BYTES=30 MB` per response · `MAX_DEPTH=6` ·
+same-origin only · skips media/static assets · curl UA to reduce bot-blocking.
+
+```
+python3 subBlitz.py -d example.com -e blitzcrawler
+python3 subBlitz.py -d example.com -e crt,blitzcrawler -p 80,443
+
+```
 ---
 
 # Usage
@@ -77,26 +91,32 @@ python3 subBlitz.py -d <domain> [options]
 # Examples
 
 ```
-# All keyless engines  
+# All keyless engines (default)
 python3 subBlitz.py -d example.com
 
-# Only crt.sh  
+# Only crt.sh
 python3 subBlitz.py -d example.com -e crt
 
-# Every registered engine (keyless + keyed)  
+# Every registered engine (keyless + keyed)
 python3 subBlitz.py -d example.com -e all
 
-# DNS bruteforce only  
+# DNS bruteforce only
 python3 subBlitz.py -d example.com -b
 
-# Scan the apex on ports 80 and 443 only  
+# Scan the apex on ports 80 and 443 only
 python3 subBlitz.py -d example.com -p 80,443
 
-# crt.sh + bruteforce + port scan  
+# crt.sh + bruteforce + port scan
 python3 subBlitz.py -d example.com -e crt -b -p 80,443
 
-# Save results to file  
-python3 subBlitz.py -d example.com -o results.txt  
+# Save results to file
+python3 subBlitz.py -d example.com -o results.txt
+
+# Active crawl only — find subdomains embedded in JS/HTML
+python3 subBlitz.py -d example.com -e blitzcrawler
+
+# Combine passive CT sources + active crawl
+python3 subBlitz.py -d example.com -e crt,crtname,scanmalware,subdomaincenter,blitzcrawler
 ```
 
 ---
@@ -114,6 +134,11 @@ python3 subBlitz.py -d example.com -o results.txt
 | `anubis` | AnubisDB |
 | `domainee` | Domainee |
 | `crt` | crt.sh |
+| `crtname` | crt.name |
+| `scanmalware` |scanmalware |
+| `subdomaincenter` |subdomain.center |
+| `thc` | thc.org |
+
 
 ## Keyed (optional)
 
